@@ -1,112 +1,107 @@
 import time
-import json
 import requests
 from tqdm import tqdm
 import os
+from services.utils import load_json, save_json, setup_logger
 
 os.makedirs("data/processed", exist_ok=True)
+os.makedirs("data/raw/queries", exist_ok=True)  # Для файлов по query
 
+def fetch_full_resumes(token, query_resumes, query_name):
+    """
+    Загружает полные резюме для конкретного запроса (query_name).
 
-def load_json(path):
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return None
-
-
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def fetch_full_resumes(token, raw_resumes):
-    import logging
-
-    logging.basicConfig(
-        level=logging.INFO,
-        filename="data/processed/fetch_full.log",
-        filemode="a",
-        format="%(asctime)s %(levelname)s:%(message)s"
-    )
+    query_resumes: list кратких резюме, полученных для query_name
+    query_name: str, например 'backend developer'
+    """
+    logging = setup_logger("data/processed/fetch_full.log")
 
     headers = {
         "Authorization": f"Bearer {token}",
         "User-Agent": "ai-resume-screener/1.0"
     }
 
-    # Загружаем уже скачанные полные резюме
     full_path = "data/processed/resumes_full.json"
-    raw_path = "data/raw/resumes_raw.json"
     full_resumes = load_json(full_path) or []
 
-    # Создаём множество ID уже скачанных резюме
+    # ID уже скачанных резюме
     downloaded_ids = {r.get("id") for r in full_resumes if "id" in r}
 
     print(f"📌 Уже скачано полных резюме: {len(downloaded_ids)}")
 
-    wait_seconds_error = 60    # фиксированная задержка при 429
-    wait_seconds = 300    # фиксированная задержка при 429
-    max_retries = 5
-    save_every = 1      # частичное сохранение
+    query_file_path = f"data/raw/queries/resumes_{query_name.replace(' ', '_')}.json"
+    query_full = load_json(query_file_path) or []
 
-    new_count = 0
-
-    for idx, short_res in enumerate(tqdm(raw_resumes, desc="📥 Получение полных резюме")):
+    for short_res in tqdm(query_resumes, desc=f"📥 Получение полных резюме для {query_name}"):
         rid = short_res.get("id")
         if not rid:
             continue
 
-        # Если резюме уже скачано — пропускаем
+        # Если резюме уже скачано, обновляем query в общем файле и в файле query
         if rid in downloaded_ids:
+            # Обновляем query в общем списке
+            for r in full_resumes:
+                if r.get("id") == rid:
+                    r["query"] = query_name
+                    break
+            # Обновляем query в query_full
+            found = False
+            for r in query_full:
+                if r.get("id") == rid:
+                    r["query"] = query_name
+                    found = True
+                    break
+            if not found:
+                # Добавляем в query_full, если не было
+                r = next(r for r in full_resumes if r.get("id") == rid)
+                query_full.append(r)
+            # Сохраняем после обновления
+            save_json(full_path, full_resumes)
+            save_json(query_file_path, query_full)
             continue
 
-        url = f"https://api.hh.ru/resumes/{rid}"
-        retry = 0
+        # Скачиваем новое резюме
+        try:
+            resp = requests.get(f"https://api.hh.ru/resumes/{rid}", headers=headers, timeout=10)
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"⚠ Ошибка запроса {rid}: {e}")
+            continue
 
-        while retry < max_retries:
-            try:
-                resp = requests.get(url, headers=headers, timeout=10)
-            except requests.exceptions.RequestException as e:
-                logging.warning(f"⚠ Ошибка запроса {rid}: {e}")
-                retry += 1
-                time.sleep(wait_seconds_error)
-                continue
-
-            if resp.status_code == 200:
-                full_resumes.append(resp.json())
-                downloaded_ids.add(rid)
-                new_count += 1
-                logging.info(f"✅ Скачано резюме {rid}")
-                break
-
-            elif resp.status_code == 404:
-                logging.warning(f"⚠ 404 — резюме {rid} не найдено")
-                raw_resumes.remove(short_res)
-                save_json(raw_path, raw_resumes)
-                break
-
-            elif resp.status_code == 429:
-                logging.warning(
-                    f"⚠ 429 (лимит). Резюме {rid}. Повтор {retry + 1}/{max_retries}. "
-                    f"Ждём {wait_seconds} секунд."
-                )
-                retry += 1
-                time.sleep(wait_seconds)
-
-            else:
-                logging.warning(f"⚠ Ошибка {resp.status_code} для {rid}: {resp.text}")
-                break
-
-        # Сохраняем прогресс
-        if new_count % save_every == 0 and new_count > 0:
+        if resp.status_code == 200:
+            full_r = resp.json()
+            full_r["query"] = query_name
+            full_resumes.append(full_r)
+            query_full.append(full_r)
+            downloaded_ids.add(rid)
+            logging.info(f"✅ Скачано резюме {rid}")
+            # Сохраняем сразу после успешного скачивания
             save_json(full_path, full_resumes)
+            save_json(query_file_path, query_full)
+
+        elif resp.status_code == 404:
+            logging.warning(f"⚠ 404 — резюме {rid} не найдено")
+            # удаляем резюме из query_resumes и из общего списка, если есть
+            query_resumes.remove(short_res)
+            full_resumes = [r for r in full_resumes if r.get("id") != rid]
+            save_json(full_path, full_resumes)
+            save_json(query_file_path, query_full)
+
+        elif resp.status_code == 429:
+            logging.warning(f"⚠ 429 — лимит достигнут, прекращаем выполнение.")
+            # Завершаем скрипт без ожидания, лимит восстанавливается через 24 часа
+            raise SystemExit("Лимит API достигнут. Скрипт завершён.")
+
+        else:
+            logging.warning(f"⚠ Ошибка {resp.status_code} для {rid}: {resp.text}")
+            continue
 
         time.sleep(0.5)
 
-    # Финальное сохранение
+    # Финальное сохранение на всякий случай
     save_json(full_path, full_resumes)
+    save_json(query_file_path, query_full)
 
-    print(f"📦 Новых полных резюме скачано: {new_count}")
-    print(f"📦 Всего теперь в базе: {len(full_resumes)}")
+    print(f"\n📦 Всего полных резюме для {query_name}: {len(query_full)}")
+    print(f"📦 Всего в базе full_resumes: {len(full_resumes)}")
 
     return full_resumes

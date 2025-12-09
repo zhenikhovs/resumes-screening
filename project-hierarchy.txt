@@ -1,0 +1,25 @@
+ai_resume_project/
+│
+├─ data/raw/
+│  ├─ resumes_raw.json
+│  └─ queries
+│     ├─ resumes_web_developer.json
+│     ├─ resumes_frontend_developer.json
+│     ├─ resumes_backend_developer.json
+│     ├─ resumes_fullstack_developer.json
+│     ├─ resumes_javascript_developer.json
+│     ├─ resumes_php_developer.json
+│     ├─ resumes_project_manager.json
+│     └─ resumes_IT_project_manager.json
+│
+├─ data/processed/
+│  ├─ resumes_full.json                 # полные резюме, скачанные по ID
+│  └─ fetch_full.log                    # лог скачивания полных резюме
+│
+├─ services/
+│  ├─ download_vacancies.py
+│  ├─ hh_auth.py                        # код для получения токена
+│  ├─ hh_fetch_raw.py                    # код для работы с краткими резюме
+│  └─ hh_fetch_full.py                   # код для работы с полными резюме
+│
+└─ main.py                              # основной скрипт запуска
