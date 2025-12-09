@@ -1,0 +1,2 @@
+Включение venv: source venv/bin/activate
+Выключение: deactivate
