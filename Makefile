@@ -16,4 +16,4 @@ clean:
 
 # Удалить данные
 clean-data:
-	rm -rf data/raw/*.json data/processed/*.json 2>/dev/null || true
+	rm -rf data/raw/*.json data/prepared/*.json 2>/dev/null || true

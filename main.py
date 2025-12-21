@@ -3,21 +3,21 @@ from services.hh_auth import get_access_token
 from services.utils import load_json, save_json
 from services.hh_fetch_full import fetch_full_resumes
 
-QUERY_FILES_DIR = "data/raw/queries"
+QUERY_FILES_DIR = "data/raw/part/resumes"
 QUERIES = [
     "web developer",
     "frontend developer",
+    "php developer",
+    "IT project manager",
+    "javascript developer",
     "backend developer",
     "fullstack developer",
-    "javascript developer",
-    "php developer",
-    "project manager",
-    "IT project manager"
+    "project manager"
 ]
 
 def ensure_dirs():
-    os.makedirs("data/raw/queries", exist_ok=True)
-    os.makedirs("data/processed", exist_ok=True)
+    os.makedirs("data/raw/part/resumes", exist_ok=True)
+    os.makedirs("data/prepared", exist_ok=True)
 
 def main():
     ensure_dirs()
@@ -26,7 +26,7 @@ def main():
     token = get_access_token()
 
     # --- Ввод query вручную ---
-    query_name = QUERIES[0]
+    query_name = QUERIES[4]
     if not query_name:
         print("❌ Не задан query")
         return

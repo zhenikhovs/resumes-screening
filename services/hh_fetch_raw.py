@@ -5,14 +5,7 @@ from tqdm import tqdm
 import os
 
 QUERIES = [
-    "web developer",
-    "frontend developer",
-    "backend developer",
-    "fullstack developer",
     "javascript developer",
-    "php developer",
-    "project manager",
-    "IT project manager"
 ]
 
 os.makedirs("data/raw", exist_ok=True)

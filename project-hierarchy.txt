@@ -12,7 +12,7 @@ ai_resume_project/
 │     ├─ resumes_project_manager.json
 │     └─ resumes_IT_project_manager.json
 │
-├─ data/processed/
+├─ data/prepared/
 │  ├─ resumes_full.json                 # полные резюме, скачанные по ID
 │  └─ fetch_full.log                    # лог скачивания полных резюме
 │
