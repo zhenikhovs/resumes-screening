@@ -1,0 +1,84 @@
+# src/normalization/tech_aliases.py
+
+TECH_ALIASES = {
+
+    # --- LANGUAGES ---
+    r"\bjs\b|\bjava\s*script\b": "javascript",
+    r"\bnode\s*js\b|\bnodejs\b": "node.js",
+    r"\bts\b|\btype\s*script\b": "typescript",
+
+    r"\bc\s*#\b|\bcsharp\b": "c#",
+    r"\bc\s*\+\+\b": "c++",
+    r"\bc\s*lang\b": "c",
+
+    r"\bpy\b": "python",
+    r"\bgolang\b": "go",
+    r"\bobjective\s*c\b": "objective-c",
+
+    # --- FRAMEWORKS ---
+    r"\bvue\b": "vue.js",
+    r"\breact\b|\breactjs\b": "react",
+    r"\bangular\s*js\b|\bangular\b": "angular",
+
+    r"\bspring\s*boot\b|\bspring\b": "spring",
+    r"\bdjango\s*rest\b": "django rest framework",
+    r"\bfast\s*api\b": "fastapi",
+
+    # --- BACKEND / PLATFORMS ---
+    r"\b\.net\b|\bdot\s*net\b": ".net",
+    r"\basp\s*net\b": "asp.net",
+
+    r"\brest\s*api\b": "rest",
+    r"\bgrpc\b": "grpc",
+
+    # --- DATABASES ---
+    r"\bpostgres\b|\bpostgresql\b|\bpostgre\b": "postgresql",
+    r"\bms\s*sql\b|\bmssql\b": "mssql",
+    r"\bmysql\b": "mysql",
+    r"\boracle\s*db\b": "oracle",
+    r"\bredis\b": "redis",
+    r"\bmongo\s*db\b|\bmongodb\b": "mongodb",
+    r"\belastic\s*search\b|\belasticsearch\b": "elasticsearch",
+
+    # --- DEVOPS ---
+    r"\bdocker\b": "docker",
+    r"\bk8s\b|\bkubernetes\b": "kubernetes",
+    r"\bhelm\b": "helm",
+    r"\bterraform\b": "terraform",
+    r"\bansible\b": "ansible",
+
+    r"\bgitlab\s*ci\b": "gitlab ci",
+    r"\bgithub\s*actions\b": "github actions",
+    r"\bjenkins\b": "jenkins",
+
+    # --- CLOUD ---
+    r"\baws\b|\bamazon\s*web\s*services\b": "aws",
+    r"\bgcp\b|\bgoogle\s*cloud\b": "gcp",
+    r"\bazure\b|\bms\s*azure\b": "azure",
+
+    # --- OS / INFRA ---
+    r"\blinux\b": "linux",
+    r"\bubuntu\b": "ubuntu",
+    r"\bdebian\b": "debian",
+    r"\bred\s*hat\b|\brhel\b": "redhat",
+    r"\bwindows\s*server\b": "windows server",
+
+    # --- TOOLS ---
+    r"\bms\s*office\b|\bmicrosoft\s*office\b": "microsoft office",
+    r"\bexcel\b": "excel",
+    r"\bjira\b": "jira",
+    r"\bconfluence\b": "confluence",
+
+    # --- METHODOLOGIES ---
+    r"\bagile\b": "agile",
+    r"\bscrum\b": "scrum",
+    r"\bkanban\b": "kanban",
+    r"\bitil\b": "itil",
+    r"\bci\s*/\s*cd\b": "ci cd",
+
+    # --- DATA / ML ---
+    r"\bml\b|\bmachine\s*learning\b": "machine learning",
+    r"\bdeep\s*learning\b": "deep learning",
+    r"\bnlp\b": "natural language processing",
+    r"\bcomputer\s*vision\b": "computer vision"
+}
