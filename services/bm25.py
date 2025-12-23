@@ -5,7 +5,7 @@ from rank_bm25 import BM25Okapi
 from tqdm import tqdm
 import numpy as np
 
-# --- Очистка requirements (ваш код) ---
+# --- Очистка requirements ---
 NOISE_PATTERNS = [
     r"\bо\s+нас\b.*?(?=(требования|задачи|ждем|наш\s+кандидат|$))",
     r"\bо\s+компании\b.*?(?=(требования|задачи|ждем|наш\s+кандидат|$))",
@@ -36,7 +36,7 @@ def remove_noise_requirements(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
-# --- Функции ---
+# --- Базовые функции ---
 def load_json_file(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -52,17 +52,18 @@ def normalize(scores):
         return [1.0 if s > 0 else 0.0 for s in arr]
     return ((arr - arr.min()) / (arr.max() - arr.min())).tolist()
 
-# --- Пути ---
+# --- Папки ---
 resumes_folder = Path("../data/prepared/resumes/cleaned/classical/")
 vacancies_folder = Path("../data/prepared/vacancies/cleaned/classical/")
 output_folder = Path("../data/results/bm25_results/")
 output_folder.mkdir(parents=True, exist_ok=True)
 
+# Веса полей
 weights = {
     "title": 2.0,
     "skills": 3.0,
     "experience": 1.0,
-    "positions": 2.0
+    "experience_months": 1.0
 }
 
 # --- Обработка ---
@@ -81,69 +82,96 @@ for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
     for v in vacancies:
         v["requirements"] = remove_noise_requirements(v.get("requirements", ""))
 
-    # Готовим раздельные корпусы по полям
-    corpuses = {field: [] for field in weights}
-    for r in resumes:
-        for field in weights:
-            if field == "positions":
-                text = " ".join(r.get("positions", []))
-            else:
-                text = r.get(field, r.get("experience", ""))  # поддержка старого формата
-            corpuses[field].append(tokenize(text))
-
-    # Создаём BM25 для каждого поля
-    bm25_models = {}
-    for field, corpus in corpuses.items():
-        if any(corpus):
-            bm25_models[field] = BM25Okapi(corpus)
-        else:
-            bm25_models[field] = None
-
     resume_ids = [r["id"] for r in resumes]
 
-    # Сравнение: каждая вакансия ищет кандидатов
+    # --- Корпуса для BM25 ---
+    title_corpus = [tokenize(r.get("title", "") + " " + " ".join(r.get("positions", []))) for r in resumes]
+    skills_corpus = [tokenize(r.get("skills", "")) for r in resumes]
+    experience_corpus = [tokenize(r.get("experience", "")) for r in resumes]
+
+    bm25_title = BM25Okapi(title_corpus) if any(title_corpus) else None
+    bm25_skills = BM25Okapi(skills_corpus) if any(skills_corpus) else None
+    bm25_experience = BM25Okapi(experience_corpus) if any(experience_corpus) else None
+
     results = []
+
     for v in tqdm(vacancies, desc=f"Ranking vacancies [{query}]"):
-        field_scores = {}
-        total_score = np.zeros(len(resume_ids))
+        n_resumes = len(resumes)
+        total_score = np.zeros(n_resumes)
 
-        for field, weight in weights.items():
-            model = bm25_models.get(field)
-            if model is None or model is None:
-                scores = [0.0] * len(resume_ids)
+        # --- Title ↔ title+positions ---
+        if bm25_title:
+            title_tokens = tokenize(v.get("title", ""))
+            title_scores = bm25_title.get_scores(title_tokens)
+            title_scores = normalize(title_scores)
+        else:
+            title_scores = [0.0] * n_resumes
+        total_score += np.array(title_scores) * weights["title"]
+
+        # --- Skills ↔ skills ---
+        skills_scores = []
+        vac_skills_set = set(tokenize(v.get("skills", "")))
+        for r in resumes:
+            resume_skills_set = set(tokenize(r.get("skills", "")))
+            if vac_skills_set:
+                matched_ratio = len(vac_skills_set & resume_skills_set) / len(vac_skills_set)
+                skills_scores.append(matched_ratio)
             else:
-                if field == "positions":
-                    query_text = v.get("title", "")
-                else:
-                    query_text = v.get(field, "") or v.get("requirements", "") or v.get("experience_text","")
-                tokens = tokenize(query_text)
-                scores = model.get_scores(tokens)
+                skills_scores.append(0.0)
+        total_score += np.array(skills_scores) * weights["skills"]
 
-            scores = normalize(scores)
-            field_scores[field] = scores
-            total_score += np.array(scores) * weight
+        # --- Requirements ↔ experience ---
+        if bm25_experience:
+            req_tokens = tokenize(v.get("requirements", ""))
+            exp_scores = bm25_experience.get_scores(req_tokens)
+            exp_scores = normalize(exp_scores)
+        else:
+            exp_scores = [0.0] * n_resumes
+        total_score += np.array(exp_scores) * weights["experience"]
 
-        # Итоговый скор
-        max_w = sum(weights.values())
-        final_scores = (total_score / max_w).clip(0, 1)
+        # --- Опыт (total_experience_months) ---
+        exp_scores_months = []
+        min_exp = v.get("min_experience_months")
+        max_exp = v.get("max_experience_months")
+        for r in resumes:
+            try:
+                total_exp = int(r.get("total_experience_months", 0))
+            except:
+                total_exp = 0
+            score = 0.0
+            if min_exp is not None:
+                min_exp = int(min_exp)
+                if total_exp >= min_exp and (max_exp is None or total_exp <= int(max_exp)):
+                    score = 1.0
+            exp_scores_months.append(score)
+        total_score += np.array(exp_scores_months) * weights["experience_months"]
+
+        # --- Финальная нормализация ---
+        max_weight = sum(weights.values())
+        final_scores = (total_score / max_weight).clip(0,1)
 
         candidates = [
-            {"resume_id": resume_ids[i], "score": round(final_scores[i], 4), "field_scores": {
-                f: round(field_scores[f][i], 4) for f in field_scores
-            }}
-            for i in range(len(resume_ids))
+            {
+                "resume_id": resume_ids[i],
+                "score": round(final_scores[i],4),
+                "field_scores": {
+                    "title": round(title_scores[i],4),
+                    "skills": round(skills_scores[i],4),
+                    "experience": round(exp_scores[i],4),
+                    "experience_months": round(exp_scores_months[i],4)
+                }
+            } for i in range(n_resumes)
         ]
 
         candidates_sorted = sorted(candidates, key=lambda x: x["score"], reverse=True)
-
         results.append({
             "vacancy_id": v["id"],
             "candidates": candidates_sorted
         })
 
-    # Сохраняем
+    # --- Сохранение ---
     out_path = output_folder / f"bm25_{query}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
-    print(f"\n[+] Query {query} обработан → {out_path}")
+    print(f"[+] Query {query} обработан → {out_path}")
