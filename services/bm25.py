@@ -85,6 +85,7 @@ for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
     resume_ids = [r["id"] for r in resumes]
 
     # --- Корпуса для BM25 ---
+    # нужно будет сделать все же в цикле
     title_corpus = [tokenize(r.get("title", "") + " " + " ".join(r.get("positions", []))) for r in resumes]
     skills_corpus = [tokenize(r.get("skills", "")) for r in resumes]
     experience_corpus = [tokenize(r.get("experience", "")) for r in resumes]
@@ -108,16 +109,12 @@ for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
             title_scores = [0.0] * n_resumes
         total_score += np.array(title_scores) * weights["title"]
 
-        # --- Skills ↔ skills ---
-        skills_scores = []
-        vac_skills_set = set(tokenize(v.get("skills", "")))
-        for r in resumes:
-            resume_skills_set = set(tokenize(r.get("skills", "")))
-            if vac_skills_set:
-                matched_ratio = len(vac_skills_set & resume_skills_set) / len(vac_skills_set)
-                skills_scores.append(matched_ratio)
-            else:
-                skills_scores.append(0.0)
+        if bm25_skills:
+            skills_tokens = tokenize(v.get("skills", ""))
+            skills_scores = bm25_skills.get_scores(skills_tokens)
+            skills_scores = normalize(skills_scores)
+        else:
+            skills_scores = [0.0] * n_resumes
         total_score += np.array(skills_scores) * weights["skills"]
 
         # --- Requirements ↔ experience ---

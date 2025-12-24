@@ -2,8 +2,7 @@ import json
 from pathlib import Path
 import numpy as np
 
-# Папка с результатами TF-IDF
-results_folder = Path("../../data/results/tfidf_results-1/")  # <- укажи свою папку
+results_folder = Path("../../data/results/tfidf_results/")  # <- укажи свою папку
 
 summary = {}
 
