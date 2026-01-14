@@ -53,8 +53,8 @@ def append_experience_to_resume_text(resume: dict) -> str:
 
 # --- Добавляем опыт в текст вакансии ---
 def append_experience_to_vacancy_text(vacancy: dict) -> str:
-    min_exp = vacancy.get("min_experience_months")
-    max_exp = vacancy.get("max_experience_months")
+    min_exp_raw = vacancy.get("min_experience_months")
+    max_exp_raw = vacancy.get("max_experience_months")
 
     def safe_int(val):
         try:
@@ -62,20 +62,21 @@ def append_experience_to_vacancy_text(vacancy: dict) -> str:
         except:
             return 0
 
-    if min_exp is not None:
-        min_exp = safe_int(min_exp)
-    if max_exp is not None:
-        max_exp = safe_int(max_exp)
+    min_exp = safe_int(min_exp_raw) if min_exp_raw is not None else None
+    max_exp = safe_int(max_exp_raw) if max_exp_raw is not None else None
 
     if min_exp is not None and max_exp is not None:
         min_words = number_to_words_ru(min_exp)
         max_words = number_to_words_ru(max_exp)
-        return f"{vacancy['text']}\nТребуемый опыт: от {min_words} до {max_words} месяцев"
+        exp_text = f"Требуемый опыт: от {min_words} до {max_words} месяцев"
     elif min_exp is not None:
         min_words = number_to_words_ru(min_exp)
-        return f"{vacancy['text']}\nТребуемый опыт: от {min_words} месяцев"
+        decl = month_declension(min_exp)
+        exp_text = f"Требуемый опыт: от {min_words} {decl}"
     else:
-        return f"{vacancy['text']}\nТребуемый опыт: не указан"
+        exp_text = "Требуемый опыт: не указан"
+
+    return f"{vacancy['text']}\n{exp_text}"
 
 # --- Обработка ---
 for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
@@ -93,13 +94,21 @@ for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
 
     # --- Формируем тексты с опытом ---
     resume_texts = [append_experience_to_resume_text(r) for r in resumes]
-    resume_embeddings = model.encode(resume_texts, convert_to_tensor=True)
+    resume_embeddings = model.encode(
+        resume_texts,
+        convert_to_tensor=True,
+        normalize_embeddings=True  # <--- добавлено
+    )
 
     results = []
 
     for v in tqdm(vacancies, desc=f"Ranking vacancies [{query}]"):
         vacancy_text = append_experience_to_vacancy_text(v)
-        vacancy_embedding = model.encode(vacancy_text, convert_to_tensor=True)
+        vacancy_embedding = model.encode(
+            vacancy_text,
+            convert_to_tensor=True,
+            normalize_embeddings=True  # <--- добавлено
+        )
 
         # --- Косинусное сходство ---
         scores = util.cos_sim(vacancy_embedding, resume_embeddings).cpu().numpy().flatten()

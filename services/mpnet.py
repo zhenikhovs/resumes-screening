@@ -3,6 +3,7 @@ from pathlib import Path
 from tqdm import tqdm
 import numpy as np
 from sentence_transformers import SentenceTransformer, util
+from num2words import num2words
 
 # --- Пути ---
 resumes_folder = Path("../data/prepared/resumes/cleaned/transformer/")
@@ -12,17 +13,73 @@ output_folder.mkdir(parents=True, exist_ok=True)
 
 # --- Модель ---
 model_name = "all-mpnet-base-v2"
+
 model = SentenceTransformer(model_name)
 
-# --- Вес опыта в месяцах относительно текста ---
-EXPERIENCE_WEIGHT = 0.17  # примерно 1/6
-
-# --- Загрузка файлов ---
+# --- Загрузка JSON ---
 def load_json(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-# --- Обработка вакансий ---
+# --- Перевод числа в слова на русском ---
+def number_to_words_ru(num: int) -> str:
+    try:
+        num = int(num)
+        return num2words(num, lang="ru")
+    except:
+        return "ноль"
+
+# --- Склонение слова "месяц" ---
+def month_declension(num: int) -> str:
+    num = abs(int(num))
+    if 11 <= num % 100 <= 14:
+        return "месяцев"
+    if num % 10 == 1:
+        return "месяц"
+    if 2 <= num % 10 <= 4:
+        return "месяца"
+    return "месяцев"
+
+# --- Добавляем опыт в текст резюме ---
+def append_experience_to_resume_text(resume: dict) -> str:
+    total_exp = resume.get("total_experience_months", 0)
+    try:
+        total_exp = int(total_exp)
+    except:
+        total_exp = 0
+
+    exp_words = number_to_words_ru(total_exp)
+    decl = month_declension(total_exp)
+    return f"{resume['text']}\nОпыт: {exp_words} {decl}"
+
+# --- Добавляем опыт в текст вакансии ---
+def append_experience_to_vacancy_text(vacancy: dict) -> str:
+    min_exp_raw = vacancy.get("min_experience_months")
+    max_exp_raw = vacancy.get("max_experience_months")
+
+    def safe_int(val):
+        try:
+            return int(val)
+        except:
+            return 0
+
+    min_exp = safe_int(min_exp_raw) if min_exp_raw is not None else None
+    max_exp = safe_int(max_exp_raw) if max_exp_raw is not None else None
+
+    if min_exp is not None and max_exp is not None:
+        min_words = number_to_words_ru(min_exp)
+        max_words = number_to_words_ru(max_exp)
+        exp_text = f"Требуемый опыт: от {min_words} до {max_words} месяцев"
+    elif min_exp is not None:
+        min_words = number_to_words_ru(min_exp)
+        decl = month_declension(min_exp)
+        exp_text = f"Требуемый опыт: от {min_words} {decl}"
+    else:
+        exp_text = "Требуемый опыт: не указан"
+
+    return f"{vacancy['text']}\n{exp_text}"
+
+# --- Обработка ---
 for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
     query = vacancy_file.stem.replace("vacancies_", "")
     resume_file = resumes_folder / f"resumes_{query}.json"
@@ -36,48 +93,31 @@ for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
 
     resume_ids = [r["id"] for r in resumes]
 
-    # --- Эмбеддинги резюме ---
-    resume_texts = [r["text"] for r in resumes]
-    resume_embeddings = model.encode(resume_texts, convert_to_tensor=True)
+    # --- Формируем тексты с опытом ---
+    resume_texts = [append_experience_to_resume_text(r) for r in resumes]
+    resume_embeddings = model.encode(
+        resume_texts,
+        convert_to_tensor=True,
+        normalize_embeddings=True  # <--- добавлено
+    )
 
     results = []
 
     for v in tqdm(vacancies, desc=f"Ranking vacancies [{query}]"):
-        vacancy_text = v["text"]
-        vacancy_embedding = model.encode(vacancy_text, convert_to_tensor=True)
+        vacancy_text = append_experience_to_vacancy_text(v)
+        vacancy_embedding = model.encode(
+            vacancy_text,
+            convert_to_tensor=True,
+            normalize_embeddings=True  # <--- добавлено
+        )
 
-        # --- Косинусное сходство текста ---
-        text_scores = util.cos_sim(vacancy_embedding, resume_embeddings).cpu().numpy().flatten()
-
-        # --- Опыт в месяцах ---
-        exp_scores = []
-        min_exp = v.get("min_experience_months")
-        max_exp = v.get("max_experience_months")
-        for r in resumes:
-            try:
-                total_exp = int(r.get("total_experience_months", 0))
-            except:
-                total_exp = 0
-            score = 0.0
-            if min_exp is not None:
-                try:
-                    min_exp = int(min_exp)
-                except:
-                    min_exp = 0
-                if total_exp >= min_exp and (max_exp is None or total_exp <= int(max_exp)):
-                    score = 1.0
-            exp_scores.append(score)
-        exp_scores = np.array(exp_scores) * EXPERIENCE_WEIGHT
-
-        # --- Финальный score с clip [0,1] ---
-        final_scores = np.clip(text_scores + exp_scores, 0, 1).tolist()
+        # --- Косинусное сходство ---
+        scores = util.cos_sim(vacancy_embedding, resume_embeddings).cpu().numpy().flatten()
 
         candidates = [
             {
                 "resume_id": resume_ids[i],
-                "score": round(final_scores[i], 4),
-                "text_score": round(float(text_scores[i]), 4),
-                "experience_bonus": round(float(exp_scores[i]), 4)
+                "score": round(float(scores[i]), 4)
             }
             for i in range(len(resumes))
         ]
@@ -89,7 +129,7 @@ for vacancy_file in vacancies_folder.glob("vacancies_*.json"):
             "candidates": candidates_sorted
         })
 
-    # --- Сохранение результатов ---
+    # --- Сохранение ---
     out_path = output_folder / f"mpnet_{query}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
