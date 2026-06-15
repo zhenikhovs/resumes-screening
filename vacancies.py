@@ -1,9 +1,9 @@
-import os
-from services.hh_auth import get_access_token
+from config.paths import RAW_PART_VACANCIES, RAW_FULL_VACANCIES
+from services.api.hh_auth import get_access_token
+from services.api.hh_fetch_full_vacancies import fetch_full_vacancies
 from services.utils import load_json, save_json
-from services.hh_fetch_full_vacancies import fetch_full_vacancies  # твой новый скрипт для вакансий
 
-QUERY_FILES_DIR = "data/raw/part/vacancies"
+QUERY_FILES_DIR = RAW_PART_VACANCIES
 QUERIES = [
     "web developer",
     "frontend developer",
@@ -16,8 +16,8 @@ QUERIES = [
 ]
 
 def ensure_dirs():
-    os.makedirs("data/raw/part/vacancies", exist_ok=True)
-    os.makedirs("data/raw/full/vacancies", exist_ok=True)
+    QUERY_FILES_DIR.mkdir(parents=True, exist_ok=True)
+    RAW_FULL_VACANCIES.mkdir(parents=True, exist_ok=True)
 
 def main():
     ensure_dirs()
@@ -31,7 +31,7 @@ def main():
         return
 
     query_file = f"vacancies_{query_name.replace(' ', '_')}.json"
-    query_path = os.path.join(QUERY_FILES_DIR, query_file)
+    query_path = QUERY_FILES_DIR / query_file
 
     short_vacancies = load_json(query_path) or []
     print(f"📦 Кратких вакансий в файле '{query_file}': {len(short_vacancies)}")
